@@ -6,6 +6,7 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Point;
+import android.graphics.RectF;
 import android.media.AudioManager;
 import android.media.SoundPool;
 import android.view.MotionEvent;
@@ -20,22 +21,26 @@ public class SnakeView extends SurfaceView implements Runnable{
     private Canvas m_Canvas;
     private SurfaceHolder m_Holder;
     private Paint m_Paint;
+    private Paint mouse_m_Paint;
+    private Paint snake_m_Paint;
+    private Paint direction_line_Paint;
     private Context m_context;
     private SoundPool m_SoundPool;
     private int m_get_mouse_sound = -1;
     private int m_dead_sound = -1;
 
-    public enum Direction{UP, RIGHT, DOWN, LEFT};
+    public enum Direction{UP, RIGHT, DOWN, LEFT}
     private Direction m_Direction = Direction.RIGHT;
 
     private int m_ScreenWidth;
     private int m_ScreenHeight;
 
     private long m_NextFrameTime;
-    private final long FPS = 10;
+    private long FPS = 10;
     private final long MILLIS_IN_A_SECOND = 1000;
 
     private int m_Score;
+    private String Difficulty_text;
 
     private int[] m_SnakeXs;
     private int[] m_SnakeYs;
@@ -50,6 +55,8 @@ public class SnakeView extends SurfaceView implements Runnable{
     private final int NUM_BLOCKS_WIDE = 40;
     private int NUM_BLOCKS_HIGH;
 
+    private Boolean touch = true;
+
     public SnakeView(Context context, Point size){
         super(context);
         m_context = context;
@@ -60,10 +67,13 @@ public class SnakeView extends SurfaceView implements Runnable{
         loadSound();
         m_Holder = getHolder();
         m_Paint = new Paint();
+        snake_m_Paint = new Paint();
+        mouse_m_Paint = new Paint();
+        direction_line_Paint = new Paint();
         m_SnakeXs = new int[200];
         m_SnakeYs = new int[200];
 
-        startGame();
+        drawMenu();
     }
 
     //Thread Control Methods - START
@@ -72,6 +82,11 @@ public class SnakeView extends SurfaceView implements Runnable{
             if(checkForUpdate()){
                 updateGame();
                 drawGame();
+            }
+        }
+        while (!m_Playing){
+            if(checkForUpdate()){
+                drawMenu();
             }
         }
     }
@@ -85,7 +100,7 @@ public class SnakeView extends SurfaceView implements Runnable{
     }
 
     public void resume(){
-        m_Playing = true;
+        //m_Playing = true;
         m_Thread = new Thread(this);
         m_Thread.start();
     }
@@ -171,32 +186,102 @@ public class SnakeView extends SurfaceView implements Runnable{
         moveSnake();
         if(detectDeath()){
             m_SoundPool.play(m_dead_sound,1,1,0,0,1);
-            startGame();
+            touch = false;
+            drawMenu();
+            m_Direction = m_Direction.UP;
         }
     }
+    public void increaseDifficulty(int m_score){
+        if (m_score < 5) {
+            FPS = 6;
+            Difficulty_text = "EASY";
+        } else if (m_score < 8){
+            FPS = 7;
+            Difficulty_text = "AVERAGE";
+        } else if (m_score < 16) {
+            FPS = 8;
+            Difficulty_text = "HARD";
+        } else if (m_score < 22) {
+            FPS = 10;
+            Difficulty_text = "INSANE";
+        } else if (m_score < 28){
+            FPS = 12;
+            Difficulty_text = "NO LIFE";
+        } else if (m_score < 32) {
+            FPS = 14;
+            Difficulty_text = "LEGEND";
+        } else if (m_score < 35){
+            FPS = 16;
+            Difficulty_text = "GOD LIKE";
+        } else {
+            FPS = 20;
+            Difficulty_text = "CHEATER";
+        }
+
+    }
+    RectF RectF = new RectF(
+            m_BlockSize, // left
+            m_BlockSize, // top
+            m_ScreenWidth - m_BlockSize, // right
+            m_ScreenHeight - m_BlockSize // bottom
+    );
 
     public void drawGame(){
         if(m_Holder.getSurface().isValid()){
             m_Canvas = m_Holder.lockCanvas();
-            m_Canvas.drawColor(Color.argb(255,120,197,87));
+            m_Canvas.drawColor(Color.argb(255,86,148,247));
             m_Paint.setColor(Color.argb(255,255,255,255));
-            m_Paint.setTextSize(30);
-            m_Canvas.drawText("Score:" + m_Score,10,30,m_Paint);
-            for(int i = 0; i < m_SnakeLength; i++){
-                m_Canvas.drawRect(m_SnakeXs[i] * m_BlockSize,
-                            m_SnakeYs[i] * m_BlockSize,
-                            (m_SnakeXs[i] * m_BlockSize) + m_BlockSize,
-                            (m_SnakeYs[i] * m_BlockSize) + m_BlockSize,
-                            m_Paint);
-            }
+            mouse_m_Paint.setColor(Color.argb(255,84,86,66));
+            snake_m_Paint.setColor(Color.argb(255,224,239,88));
+            direction_line_Paint.setColor(Color.argb(255,133,175,242));
+            direction_line_Paint.setTextSize(40);
+            direction_line_Paint.setStrokeWidth(8);
+            m_Canvas.drawLine(m_ScreenWidth / 2, 0, m_ScreenWidth / 2, m_ScreenHeight, direction_line_Paint );
+            m_Paint.setTextSize(40);
+            m_Canvas.drawText("SCORE: " + m_Score + "        " + "DIFFICULTY: " + Difficulty_text,10,30,m_Paint);
+            m_Canvas.drawText("TAP TO TURN LEFT", m_ScreenWidth - m_ScreenWidth + 100 , m_ScreenHeight - 50, direction_line_Paint);
+            m_Canvas.drawText("TAP TO TURN RIGHT", m_ScreenWidth / 2 + 100, m_ScreenHeight - 50, direction_line_Paint);
+            increaseDifficulty(m_Score);
 
-            m_Canvas.drawRect(m_MouseX * m_BlockSize,
+            m_Canvas.drawRoundRect(new RectF(m_SnakeXs[0] * m_BlockSize,
+                            m_SnakeYs[0] * m_BlockSize,
+                            (m_SnakeXs[0] * m_BlockSize) + m_BlockSize,
+                            (m_SnakeYs[0] * m_BlockSize) + m_BlockSize),10,10,
+                    snake_m_Paint);
+
+            for(int i = 1; i < m_SnakeLength; i++) {
+                m_Canvas.drawRoundRect(new RectF(m_SnakeXs[i] * m_BlockSize,
+                        m_SnakeYs[i] * m_BlockSize,
+                        (m_SnakeXs[i] * m_BlockSize) + m_BlockSize,
+                        (m_SnakeYs[i] * m_BlockSize) + m_BlockSize),5,5,
+                        snake_m_Paint);
+            }
+            m_Canvas.drawRoundRect(new RectF(m_MouseX * m_BlockSize,
                     m_MouseY * m_BlockSize,
                     (m_MouseX * m_BlockSize) + m_BlockSize,
-                    (m_MouseY * m_BlockSize) + m_BlockSize,
-                    m_Paint);
+                    (m_MouseY * m_BlockSize) + m_BlockSize),6,6,
+                    mouse_m_Paint);
 
             m_Holder.unlockCanvasAndPost(m_Canvas);
+        }
+    }
+    public void drawMenu(){
+        m_Playing = false;
+        while (!m_Playing) {
+            if (m_Holder.getSurface().isValid()) {
+                m_Canvas = m_Holder.lockCanvas();
+                m_Canvas.drawColor(Color.argb(50, 0, 0, 0));
+                m_Paint.setColor(Color.argb(255, 255, 255, 255));
+                m_Paint.setTextSize(60);
+                m_Canvas.drawText("SCORE : " + m_Score, 500, 200, m_Paint);
+                m_Canvas.drawText("TOUCH TO RESTART" , 350, 400, m_Paint);
+                m_Holder.unlockCanvasAndPost(m_Canvas);
+
+            }
+            if (touch) {
+                m_Playing = true;
+                startGame();
+            }
         }
     }
 
@@ -210,6 +295,7 @@ public class SnakeView extends SurfaceView implements Runnable{
 
     @Override
     public boolean onTouchEvent(MotionEvent motionEvent){
+        touch = true;
         switch(motionEvent.getAction() & MotionEvent.ACTION_MASK){
             case MotionEvent.ACTION_UP:
                 if(motionEvent.getX() >= m_ScreenWidth / 2){

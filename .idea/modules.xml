@@ -2,7 +2,8 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/SnakeGame.iml" filepath="$PROJECT_DIR$/SnakeGame.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/SnakeGame.iml" filepath="$PROJECT_DIR$/.idea/SnakeGame.iml" />
+      <module fileurl="file://C:\Users\Admin\AndroidStudioProjects\SnakeGame\SnakeGame.iml" filepath="C:\Users\Admin\AndroidStudioProjects\SnakeGame\SnakeGame.iml" />
       <module fileurl="file://$PROJECT_DIR$/app/app.iml" filepath="$PROJECT_DIR$/app/app.iml" />
     </modules>
   </component>
