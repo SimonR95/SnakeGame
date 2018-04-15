@@ -29,4 +29,5 @@ public class SnakeActivity extends Activity {
         super.onPause();
         snakeView.pause();
     }
+
 }
