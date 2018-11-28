@@ -16,317 +16,347 @@ import java.io.IOException;
 import java.util.Random;
 
 public class SnakeView extends SurfaceView implements Runnable{
-    private Thread m_Thread = null;
-    private volatile boolean m_Playing;
-    private Canvas m_Canvas;
-    private SurfaceHolder m_Holder;
-    private Paint m_Paint;
-    private Paint mouse_m_Paint;
-    private Paint snake_m_Paint;
-    private Paint direction_line_Paint;
-    private Context m_context;
-    private SoundPool m_SoundPool;
-    private int m_get_mouse_sound = -1;
-    private int m_dead_sound = -1;
+    private Thread thread = null;
+    private volatile boolean playing;
+    private Canvas canvas;
+    private SurfaceHolder holder;
+    private Paint paint;
+    private Paint mousePaint;
+    private Paint snakePaint;
+    private Paint directionLinePaint;
+    private Context context;
+    private SoundPool soundpool;
+    private int getMouseSound = -1;
+    private int deathSound = -1;
 
     public enum Direction{UP, RIGHT, DOWN, LEFT}
-    private Direction m_Direction = Direction.RIGHT;
+    private Direction direction = Direction.RIGHT;
 
-    private int m_ScreenWidth;
-    private int m_ScreenHeight;
+    private int screenWidth;
+    private int screenHeight;
 
-    private long m_NextFrameTime;
+    private long previousFrameMillis;
     private long FPS = 10;
-    private final long MILLIS_IN_A_SECOND = 1000;
+    private final long millisInASecond = 1000;
 
-    private int m_Score;
-    private String Difficulty_text;
+    private int score;
+    private String difficultyText;
 
-    private int[] m_SnakeXs;
-    private int[] m_SnakeYs;
+    private int[] snakeXCoords;
+    private int[] snakeYCoords;
 
-    private int m_SnakeLength;
+    private int snakeLength;
 
-    private int m_MouseX;
-    private int m_MouseY;
+    private int mouseXCoords;
+    private int mouseYCoords;
 
-    private int m_BlockSize;
+    private int blockSize;
 
-    private final int NUM_BLOCKS_WIDE = 40;
-    private int NUM_BLOCKS_HIGH;
+    private final int numBlocksWide = 40;
+    private int numBlocksHigh;
 
     private Boolean touch = true;
 
-    public SnakeView(Context context, Point size){
-        super(context);
-        m_context = context;
-        m_ScreenWidth = size.x;
-        m_ScreenHeight = size.y;
-        m_BlockSize = m_ScreenWidth / NUM_BLOCKS_WIDE;
-        NUM_BLOCKS_HIGH = m_ScreenHeight / m_BlockSize;
+    public SnakeView(Context acontext, Point size){
+        super(acontext);
+        context = acontext;
+        screenWidth = size.x;
+        screenHeight = size.y;
+        blockSize = screenWidth / numBlocksWide;
+        numBlocksHigh = screenHeight / blockSize;
         loadSound();
-        m_Holder = getHolder();
-        m_Paint = new Paint();
-        snake_m_Paint = new Paint();
-        mouse_m_Paint = new Paint();
-        direction_line_Paint = new Paint();
-        m_SnakeXs = new int[200];
-        m_SnakeYs = new int[200];
+        holder = getHolder();
+        paint = new Paint();
+        snakePaint = new Paint();
+        mousePaint = new Paint();
+        directionLinePaint = new Paint();
+        snakeXCoords = new int[200];
+        snakeYCoords = new int[200];
 
         drawMenu();
     }
 
-    //Thread Control Methods - START
+    //Thread Control Methods - START//
+
+    //The default state, either playing the game or showing the game over screen
     public void run(){
-        while(m_Playing){
+        while(playing){
             if(checkForUpdate()){
                 updateGame();
                 drawGame();
             }
         }
-        while (!m_Playing){
+        while (!playing){
             if(checkForUpdate()){
                 drawMenu();
             }
         }
     }
 
+    //Runs when focus is lost such as when the phone is locked
     public void pause(){
-        m_Playing = false;
+        playing = false;
         try {
-            m_Thread.join();
+            thread.join();
         }catch(InterruptedException e){
         }
     }
 
+    //Runs when focus is resumed
     public void resume(){
-        //m_Playing = true;
-        m_Thread = new Thread(this);
-        m_Thread.start();
+        thread = new Thread(this);
+        thread.start();
     }
-    //Thread Control Methods - END
+    //Thread Control Methods - END//
 
+
+    //Initialisation Methods - START//
+
+    //Sets up game logic
     public void startGame(){
-        m_SnakeLength = 1;
-        m_SnakeXs[0] = NUM_BLOCKS_WIDE / 2;
-        m_SnakeYs[0] = NUM_BLOCKS_HIGH;
+        snakeLength = 1;
+        snakeXCoords[0] = numBlocksWide / 2;
+        snakeYCoords[0] = numBlocksHigh;
 
         spawnMouse();
-        m_Score = 0;
-        m_NextFrameTime = System.currentTimeMillis();
+        score = 0;
+        previousFrameMillis = System.currentTimeMillis();
     }
 
+    //Sets up Death and Score sounds
     public void loadSound(){
-        m_SoundPool = new SoundPool(10, AudioManager.STREAM_MUSIC, 0);
+        soundpool = new SoundPool(10, AudioManager.STREAM_MUSIC, 0);
         try {
-            AssetManager assetManager = m_context.getAssets();
+            AssetManager assetManager = context.getAssets();
             AssetFileDescriptor descriptor;
 
             descriptor = assetManager.openFd("get_mouse_sound.ogg");
-            m_get_mouse_sound = m_SoundPool.load(descriptor, 0);
+            getMouseSound = soundpool.load(descriptor, 0);
 
             descriptor = assetManager.openFd("death_sound.ogg");
-            m_dead_sound = m_SoundPool.load(descriptor, 0);
+            deathSound = soundpool.load(descriptor, 0);
         } catch (IOException e){
         }
     }
+    //Initialisation Methods - END//
 
+
+    //Game Update Methods - START//
+
+    //Checks whether time has passed since the previous frame was rendered and renders a new frame + updates previousFrameMillis to the current time if true
+    public boolean checkForUpdate(){
+        if(previousFrameMillis <= System.currentTimeMillis()){
+            previousFrameMillis = System.currentTimeMillis() + millisInASecond / FPS;
+            return true;
+        }
+        return false;
+    }
+
+    //Called every frame, handles game logic
+    public void updateGame(){
+        if(snakeXCoords[0] == mouseXCoords && snakeYCoords[0] == mouseYCoords){
+            eatMouse();
+        }
+        moveSnake();
+        if(detectDeath()){
+            soundpool.play(deathSound,1,1,0,0,1);
+            touch = false;
+            drawMenu();
+            direction = direction.UP;
+        }
+    }
+    //Game Update Methods - END//
+
+
+    //Graphic Draw Methods - START//
+
+    //Gameplay graphics
+    public void drawGame(){
+        if(holder.getSurface().isValid()){
+            canvas = holder.lockCanvas();
+            canvas.drawColor(Color.argb(255,86,148,247));
+            paint.setColor(Color.argb(255,255,255,255));
+            mousePaint.setColor(Color.argb(255,84,86,66));
+            snakePaint.setColor(Color.argb(255,224,239,88));
+            directionLinePaint.setColor(Color.argb(255,133,175,242));
+            directionLinePaint.setTextSize(40);
+            directionLinePaint.setStrokeWidth(8);
+            canvas.drawLine(screenWidth / 2, 0, screenWidth / 2, screenHeight, directionLinePaint );
+            paint.setTextSize(40);
+            canvas.drawText("SCORE: " + score + "        " + "DIFFICULTY: " + difficultyText,10,30,paint);
+            canvas.drawText("TAP TO TURN LEFT", 100 , screenHeight - 50, directionLinePaint);
+            canvas.drawText("TAP TO TURN RIGHT", screenWidth / 2 + 100, screenHeight - 50, directionLinePaint);
+            increaseDifficulty(score);
+
+            canvas.drawRoundRect(new RectF(snakeXCoords[0] * blockSize,
+                            snakeYCoords[0] * blockSize,
+                            (snakeXCoords[0] * blockSize) + blockSize,
+                            (snakeYCoords[0] * blockSize) + blockSize),10,10,
+                    snakePaint);
+
+            for(int i = 1; i < snakeLength; i++) {
+                canvas.drawRoundRect(new RectF(snakeXCoords[i] * blockSize,
+                                snakeYCoords[i] * blockSize,
+                                (snakeXCoords[i] * blockSize) + blockSize,
+                                (snakeYCoords[i] * blockSize) + blockSize),5,5,
+                        snakePaint);
+            }
+            canvas.drawRoundRect(new RectF(mouseXCoords * blockSize,
+                            mouseYCoords * blockSize,
+                            (mouseXCoords * blockSize) + blockSize,
+                            (mouseYCoords * blockSize) + blockSize),6,6,
+                    mousePaint);
+
+            holder.unlockCanvasAndPost(canvas);
+        }
+    }
+
+    //Game Over graphics//
+    public void drawMenu(){
+        playing = false;
+        while (!playing) {
+            if (holder.getSurface().isValid()) {
+                canvas = holder.lockCanvas();
+                canvas.drawColor(Color.argb(50, 0, 0, 0));
+                paint.setColor(Color.argb(255, 255, 255, 255));
+                paint.setTextSize(60);
+                canvas.drawText("SCORE : " + score, 500, 200, paint);
+                canvas.drawText("TOUCH TO RESTART" , 350, 400, paint);
+                holder.unlockCanvasAndPost(canvas);
+
+            }
+            if (touch) {
+                playing = true;
+                startGame();
+            }
+        }
+    }
+    //Graphic Draw Methods - END//
+
+
+    //Moves the mouse to a new random location
     public void spawnMouse(){
         Random random = new Random();
-        m_MouseX = random.nextInt(NUM_BLOCKS_WIDE - 1) + 1;
-        m_MouseY = random.nextInt(NUM_BLOCKS_HIGH - 1) + 1;
+        mouseXCoords = random.nextInt(numBlocksWide - 1) + 1;
+        mouseYCoords = random.nextInt(numBlocksHigh - 1) + 1;
     }
 
+    //Updates the Snake length and score and calls the method above to reposition the mouse
     private void eatMouse(){
-        m_SnakeLength++;
+        snakeLength++;
         spawnMouse();
-        m_Score++;
-        m_SoundPool.play(m_get_mouse_sound, 1 ,1 ,0 ,0 ,1);
+        score++;
+        soundpool.play(getMouseSound, 1 ,1 ,0 ,0 ,1);
     }
 
+    //Updates Snake position in accordance with current direction
     private void moveSnake(){
-        for(int i = m_SnakeLength; i > 0; i--){
-            m_SnakeXs[i] = m_SnakeXs[i - 1];
-            m_SnakeYs[i] = m_SnakeYs[i - 1];
+        for(int i = snakeLength; i > 0; i--){
+            snakeXCoords[i] = snakeXCoords[i - 1];
+            snakeYCoords[i] = snakeYCoords[i - 1];
         }
-        switch(m_Direction){
+        switch(direction){
             case UP:
-                m_SnakeYs[0]--;
+                snakeYCoords[0]--;
                 break;
             case RIGHT:
-                m_SnakeXs[0]++;
+                snakeXCoords[0]++;
                 break;
             case DOWN:
-                m_SnakeYs[0]++;
+                snakeYCoords[0]++;
                 break;
             case LEFT:
-                m_SnakeXs[0]--;
+                snakeXCoords[0]--;
                 break;
         }
     }
 
+    //Method that performs various checks against the Snake to see if it's alive
     private boolean detectDeath(){
         boolean dead = false;
-        if(m_SnakeXs[0] == -1) dead = true;
-        if(m_SnakeXs[0] >= NUM_BLOCKS_WIDE) dead = true;
-        if(m_SnakeYs[0] == -1) dead = true;
-        if(m_SnakeYs[0] >= NUM_BLOCKS_HIGH) dead = true;
-        for(int i = m_SnakeLength - 1; i > 0; i--){
-            if((i > 4) && (m_SnakeXs[0] == m_SnakeXs[i]) && (m_SnakeYs[0] == m_SnakeYs[i])){
+        //Checks whether the Snake is out of bounds
+        if(snakeXCoords[0] == -1) dead = true;
+        if(snakeXCoords[0] >= numBlocksWide) dead = true;
+        if(snakeYCoords[0] == -1) dead = true;
+        if(snakeYCoords[0] >= numBlocksHigh) dead = true;
+        //Checks whether the Snake's head is in the same spot as any of it's body's co-ordinates and has thus hit itself
+        for(int i = snakeLength - 1; i > 0; i--){
+            if((snakeXCoords[0] == snakeXCoords[i]) && (snakeYCoords[0] == snakeYCoords[i])){
                 dead = true;
             }
         }
         return dead;
     }
 
-    public void updateGame(){
-        if(m_SnakeXs[0] == m_MouseX && m_SnakeYs[0] == m_MouseY){
-            eatMouse();
-        }
-        moveSnake();
-        if(detectDeath()){
-            m_SoundPool.play(m_dead_sound,1,1,0,0,1);
-            touch = false;
-            drawMenu();
-            m_Direction = m_Direction.UP;
-        }
-    }
-    public void increaseDifficulty(int m_score){
-        if (m_score < 5) {
+
+
+    //Increases speed of Snake in response to score
+    public void increaseDifficulty(int score){
+        if (score < 5) {
             FPS = 6;
-            Difficulty_text = "EASY";
-        } else if (m_score < 8){
+            difficultyText = "EASY";
+        } else if (score < 8){
             FPS = 7;
-            Difficulty_text = "AVERAGE";
-        } else if (m_score < 16) {
+            difficultyText = "AVERAGE";
+        } else if (score < 16) {
             FPS = 8;
-            Difficulty_text = "HARD";
-        } else if (m_score < 22) {
+            difficultyText = "HARD";
+        } else if (score < 22) {
             FPS = 10;
-            Difficulty_text = "INSANE";
-        } else if (m_score < 28){
+            difficultyText = "INSANE";
+        } else if (score < 28){
             FPS = 12;
-            Difficulty_text = "NO LIFE";
-        } else if (m_score < 32) {
+            difficultyText = "NO LIFE";
+        } else if (score < 32) {
             FPS = 14;
-            Difficulty_text = "LEGEND";
-        } else if (m_score < 35){
+            difficultyText = "LEGEND";
+        } else if (score < 35){
             FPS = 16;
-            Difficulty_text = "GOD LIKE";
+            difficultyText = "GOD LIKE";
         } else {
             FPS = 20;
-            Difficulty_text = "CHEATER";
+            difficultyText = "CHEATER";
         }
 
     }
-    RectF RectF = new RectF(
-            m_BlockSize, // left
-            m_BlockSize, // top
-            m_ScreenWidth - m_BlockSize, // right
-            m_ScreenHeight - m_BlockSize // bottom
-    );
 
-    public void drawGame(){
-        if(m_Holder.getSurface().isValid()){
-            m_Canvas = m_Holder.lockCanvas();
-            m_Canvas.drawColor(Color.argb(255,86,148,247));
-            m_Paint.setColor(Color.argb(255,255,255,255));
-            mouse_m_Paint.setColor(Color.argb(255,84,86,66));
-            snake_m_Paint.setColor(Color.argb(255,224,239,88));
-            direction_line_Paint.setColor(Color.argb(255,133,175,242));
-            direction_line_Paint.setTextSize(40);
-            direction_line_Paint.setStrokeWidth(8);
-            m_Canvas.drawLine(m_ScreenWidth / 2, 0, m_ScreenWidth / 2, m_ScreenHeight, direction_line_Paint );
-            m_Paint.setTextSize(40);
-            m_Canvas.drawText("SCORE: " + m_Score + "        " + "DIFFICULTY: " + Difficulty_text,10,30,m_Paint);
-            m_Canvas.drawText("TAP TO TURN LEFT", m_ScreenWidth - m_ScreenWidth + 100 , m_ScreenHeight - 50, direction_line_Paint);
-            m_Canvas.drawText("TAP TO TURN RIGHT", m_ScreenWidth / 2 + 100, m_ScreenHeight - 50, direction_line_Paint);
-            increaseDifficulty(m_Score);
-
-            m_Canvas.drawRoundRect(new RectF(m_SnakeXs[0] * m_BlockSize,
-                            m_SnakeYs[0] * m_BlockSize,
-                            (m_SnakeXs[0] * m_BlockSize) + m_BlockSize,
-                            (m_SnakeYs[0] * m_BlockSize) + m_BlockSize),10,10,
-                    snake_m_Paint);
-
-            for(int i = 1; i < m_SnakeLength; i++) {
-                m_Canvas.drawRoundRect(new RectF(m_SnakeXs[i] * m_BlockSize,
-                        m_SnakeYs[i] * m_BlockSize,
-                        (m_SnakeXs[i] * m_BlockSize) + m_BlockSize,
-                        (m_SnakeYs[i] * m_BlockSize) + m_BlockSize),5,5,
-                        snake_m_Paint);
-            }
-            m_Canvas.drawRoundRect(new RectF(m_MouseX * m_BlockSize,
-                    m_MouseY * m_BlockSize,
-                    (m_MouseX * m_BlockSize) + m_BlockSize,
-                    (m_MouseY * m_BlockSize) + m_BlockSize),6,6,
-                    mouse_m_Paint);
-
-            m_Holder.unlockCanvasAndPost(m_Canvas);
-        }
-    }
-    public void drawMenu(){
-        m_Playing = false;
-        while (!m_Playing) {
-            if (m_Holder.getSurface().isValid()) {
-                m_Canvas = m_Holder.lockCanvas();
-                m_Canvas.drawColor(Color.argb(50, 0, 0, 0));
-                m_Paint.setColor(Color.argb(255, 255, 255, 255));
-                m_Paint.setTextSize(60);
-                m_Canvas.drawText("SCORE : " + m_Score, 500, 200, m_Paint);
-                m_Canvas.drawText("TOUCH TO RESTART" , 350, 400, m_Paint);
-                m_Holder.unlockCanvasAndPost(m_Canvas);
-
-            }
-            if (touch) {
-                m_Playing = true;
-                startGame();
-            }
-        }
-    }
-
-    public boolean checkForUpdate(){
-        if(m_NextFrameTime <= System.currentTimeMillis()){
-            m_NextFrameTime = System.currentTimeMillis() + MILLIS_IN_A_SECOND / FPS;
-            return true;
-        }
-        return false;
-    }
-
+    //Determines what direction the Snake is moving in response to touch
     @Override
     public boolean onTouchEvent(MotionEvent motionEvent){
         touch = true;
         switch(motionEvent.getAction() & MotionEvent.ACTION_MASK){
             case MotionEvent.ACTION_UP:
-                if(motionEvent.getX() >= m_ScreenWidth / 2){
-                    switch(m_Direction){
+                //Tapping right side of screen for clockwise turns
+                if(motionEvent.getX() >= screenWidth / 2){
+                    switch(direction){
                         case UP:
-                            m_Direction = Direction.RIGHT;
+                            direction = Direction.RIGHT;
                             break;
                         case RIGHT:
-                            m_Direction = Direction.DOWN;
+                            direction = Direction.DOWN;
                             break;
                         case DOWN:
-                            m_Direction = Direction.LEFT;
+                            direction = Direction.LEFT;
                             break;
                         case LEFT:
-                            m_Direction = Direction.UP;
+                            direction = Direction.UP;
                             break;
                     }
                 }
+                //Tapping left side of screen for anti-clockwise turns
                 else{
-                    switch(m_Direction){
+                    switch(direction){
                         case UP:
-                            m_Direction = Direction.LEFT;
+                            direction = Direction.LEFT;
                             break;
                         case LEFT:
-                            m_Direction = Direction.DOWN;
+                            direction = Direction.DOWN;
                             break;
                         case DOWN:
-                            m_Direction = Direction.RIGHT;
+                            direction = Direction.RIGHT;
                             break;
                         case RIGHT:
-                            m_Direction = Direction.UP;
+                            direction = Direction.UP;
                             break;
                     }
                 }
